@@ -6,7 +6,7 @@ Deploy:       Vercel (see README). Zero state on the server: watchlists live in
 Data: Yahoo Finance (prices), NSE (FII/DII), RSS (news). Falls back to sample
 data per-field when a source is unreachable, so the UI always renders.
 """
-import os, random, re, sys, time, threading
+import html, os, random, re, sys, time, threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
@@ -285,8 +285,8 @@ def _tag(text):
             return tag
     return "MARKETS"
 
-def _clean(html):
-    txt = re.sub(r"<[^>]+>", " ", html or "")
+def _clean(html_):
+    txt = html.unescape(html.unescape(re.sub(r"<[^>]+>", " ", html_ or ""))).replace(" ", " ")
     txt = re.sub(r"\s+", " ", txt).strip()
     return txt[:220] + ("…" if len(txt) > 220 else "")
 
@@ -305,7 +305,7 @@ def fetch_news(kind):
         try:
             r = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
             for e in feedparser.parse(r.content).entries[:25]:
-                title = (e.get("title") or "").strip()
+                title = html.unescape(html.unescape(e.get("title") or "")).strip()
                 if not title:
                     continue
                 summary = _clean(e.get("summary", ""))
