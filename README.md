@@ -31,6 +31,22 @@ shows a real price and day change but no sparkline.
 - Symbols and feeds: edit the `KPIS`, `GLOBAL`, `CRUDE` and `FEEDS` lists at the top of `app.py`
 - News tags: edit the `TAGS` regex list in `app.py`
 
+## Telegram bot
+Optional. Gives each user their own watchlist, price alerts, a digest about every 3 hours, and pings for major world or market events. Code: `telegram_bot.py`. Commands: `/watch`, `/unwatch`, `/list`, `/now`, `/alert TCS above 4200`, `/alerts`, `/unalert`, `/digest on|off`, `/breaking on|off`, `/stop`.
+
+How it works: Telegram calls `/api/telegram/webhook` for each command; a GitHub Actions job (`.github/workflows/tick.yml`, every 30 min) calls `/api/cron/tick`, which sends due alerts, breaking items and digests. State (watchlists, alerts) lives in Redis. Overnight (11pm-7am IST) only price alerts and severe events (market shocks) are sent.
+
+Setup:
+1. In Telegram, message **@BotFather**, send `/newbot`, and copy the bot token.
+2. In the Vercel project, **Storage → Create → Upstash Redis** (free tier) and connect it to the project. This adds the `KV_REST_API_URL` and `KV_REST_API_TOKEN` env vars.
+3. Vercel **Settings → Environment Variables**: add `TELEGRAM_BOT_TOKEN`, plus two random strings you make up: `TELEGRAM_WEBHOOK_SECRET` and `CRON_SECRET` (e.g. `openssl rand -hex 24`). Redeploy.
+4. Register the webhook and command menu once:
+   `curl -X POST -H "Authorization: Bearer <CRON_SECRET>" https://<your-app>.vercel.app/api/telegram/setup`
+5. GitHub repo **Settings → Secrets and variables → Actions**: add `APP_URL` (`https://<your-app>.vercel.app`, no trailing slash) and `CRON_SECRET` (same value as step 3).
+6. Open your bot in Telegram and send `/start`.
+
+Caveats: GitHub may delay scheduled runs by several minutes, and pauses them after 60 days without repo activity. A tick sends messages one by one inside a 60 s function limit, which is fine for tens of users, not thousands.
+
 ## Deploy to Vercel
 1. Push this folder to a GitHub repo (`.gitignore` already excludes `.venv`, logs and `watchlist.json`).
 2. On vercel.com: **Add New → Project**, import the repo. Vercel detects FastAPI from `app.py` and serves `public/` from its CDN. No build settings needed.

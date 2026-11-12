@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 # Windows consoles default to cp1252, which cannot encode the banner's arrow or
 # the rupee signs and ellipses in feed titles — printing them raises
@@ -32,6 +33,7 @@ PUBLIC = ROOT / "public"
 APP_NAME = os.environ.get("TERMINAL_NAME", "Market Terminal")
 SERVERLESS = bool(os.environ.get("VERCEL"))   # no background threads between requests
 MAX_WATCHLIST = 25
+DEFAULT_WATCHLIST = ["RELIANCE.NS", "HDFCBANK.NS", "TCS.NS", "INFY.NS"]
 SYMBOL_RE = re.compile(r"^[A-Z0-9.^=&\-]{1,20}$")
 YAHOO_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124 Safari/537.36"}
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -437,7 +439,7 @@ def index():  # on Vercel the CDN serves public/index.html directly; this is for
 def config(response: Response):
     edge_cache(response, 3600)
     return {"name": APP_NAME, "max_watchlist": MAX_WATCHLIST,
-            "default_watchlist": ["RELIANCE.NS", "HDFCBANK.NS", "TCS.NS", "INFY.NS"]}
+            "default_watchlist": DEFAULT_WATCHLIST}
 
 @app.get("/api/market")
 def market(response: Response):
@@ -516,6 +518,15 @@ def resolve(q: str = ""):
 @app.get("/api/health")
 def health():
     return {"ok": True, "serverless": SERVERLESS}
+
+import telegram_bot
+telegram_bot.register(app, SimpleNamespace(
+    resolve=_resolve, quotes=fetch_quotes, watch_row=watch_row,
+    market=lambda: cached("market", PRICE_TTL, build_market),
+    flows=lambda: cached("flows", FLOW_TTL, fetch_flows),
+    news=fetch_news_cached,
+    sectors=lambda: cached("sectors", PRICE_TTL, build_sectors),
+    ist=IST, app_name=APP_NAME, max_watchlist=MAX_WATCHLIST, default_watchlist=DEFAULT_WATCHLIST))
 
 if __name__ == "__main__":
     import uvicorn
