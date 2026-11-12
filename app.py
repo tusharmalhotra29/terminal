@@ -176,7 +176,8 @@ def _fetch_one(sym):
                 # (^CNXSC): price is real, so change off the previous close/open.
                 opens = [x for x in quote.get("open", []) if x is not None]
                 prev = meta.get("chartPreviousClose") or (float(opens[-1]) if opens else last)
-            return {"price": round(last, 2),
+            ret = lambda n: round((last / closes[-1 - n] - 1) * 100, 2) if len(closes) > n else None
+            return {"r5": ret(5), "r21": ret(21), "price": round(last, 2),
                     "change_pct": round((last / prev - 1) * 100, 2) if prev else 0.0,
                     "spark": [round(x, 2) for x in closes[-20:]], "live": True}
         except Exception as e:
@@ -336,6 +337,72 @@ def _sample_news(kind):
     return [{"title": t, "summary": d, "link": None, "source": "Sample data (offline)",
              "ts": now - i * 120 - 1380, "tag": g} for i, (g, t, d) in enumerate(s)]
 
+# ---------------------------------------------------------------- sectors
+SECTORS = [  # (name, yahoo index, headline keywords)
+    ("Banks", "^NSEBANK", r"\b(bank|banks|banking|hdfc bank|icici|sbi|axis bank|kotak|npa|credit growth|nim)\b"),
+    ("Financial Services", "NIFTY_FIN_SERVICE.NS", r"\b(nbfc|bajaj fin|insurance|mutual fund|sebi|lender|housing finance|broker)\w*"),
+    ("PSU Banks", "^CNXPSUBANK", r"\b(psu bank|public sector bank|sbi|bank of baroda|canara|pnb)\b"),
+    ("IT", "^CNXIT", r"\b(it stocks?|infosys|tcs|wipro|hcl ?tech|tech mahindra|software|ai demand|h-?1b|nasscom)\b"),
+    ("Auto", "^CNXAUTO", r"\b(auto|automobile|maruti|tata motors|mahindra|two-wheeler|ev|vehicle sales|bajaj auto|hero moto)\b"),
+    ("Pharma", "^CNXPHARMA", r"\b(pharma|drug|usfda|sun pharma|cipla|dr reddy|biocon|generic|healthcare)\b"),
+    ("FMCG", "^CNXFMCG", r"\b(fmcg|hul|hindustan unilever|itc|nestle|britannia|rural demand|consumer goods)\b"),
+    ("Metals", "^CNXMETAL", r"\b(metal|steel|aluminium|copper|hindalco|tata steel|jsw|vedanta|iron ore|zinc)\b"),
+    ("Energy", "^CNXENERGY", r"\b(crude|oil|gas|reliance|ongc|opec|brent|refin\w*|power|ntpc|energy)\b"),
+    ("Realty", "^CNXREALTY", r"\b(real estate|realty|dlf|godrej properties|housing|property|home loan|rera)\b"),
+    ("Infrastructure", "^CNXINFRA", r"\b(infra\w*|capex|l&t|larsen|cement|road|railway|port|construction|order book)\b"),
+    ("PSU", "^CNXPSE", r"\b(psu|public sector|disinvestment|ongc|coal india|bhel|hal|bel|defence)\b"),
+    ("Consumption", "^CNXCONSUM", r"\b(consumption|consumer|retail|demand|festive|titan|trent|discretionary)\b"),
+    ("MNC", "^CNXMNC", r"\b(mnc|multinational|nestle|hindustan unilever|maruti suzuki|abb|siemens)\b"),
+]
+POS = r"\b(surge[sd]?|jump[sd]?|rall(y|ies|ied)|gain[s]?|rise[s]?|rose|record|beat[s]?|upgrade[sd]?|boost|strong|growth|buy|outperform|wins?|order win|profit rises?)\b"
+NEG = r"\b(fall[s]?|fell|drop[s]?|slump[s]?|plunge[sd]?|crash\w*|tumble[sd]?|slide[s]?|weak|miss(es|ed)?|downgrade[sd]?|probe|ban|penalty|loss|cut[s]?|sell-?off|selloff|concern[s]?|risk[s]?)\b"
+
+def _z(vals):
+    vals = [v for v in vals if v is not None]
+    if len(vals) < 2:
+        return lambda v: 0.0
+    m = sum(vals) / len(vals)
+    sd = (sum((v - m) ** 2 for v in vals) / len(vals)) ** 0.5 or 1.0
+    return lambda v: 0.0 if v is None else (v - m) / sd
+
+def build_sectors():
+    q = fetch_quotes([sym for _, sym, _ in SECTORS])
+    try:
+        heads = (fetch_news_cached("india") + fetch_news_cached("global"))
+    except Exception:
+        heads = []
+    cutoff = time.time() - 48 * 3600
+    heads = [h for h in heads if h["ts"] >= cutoff]
+    rows = []
+    for name, sym, kw in SECTORS:
+        if not q[sym]["live"]:
+            continue
+        hits = [h for h in heads if re.search(kw, (h["title"] + " " + h["summary"]).lower())]
+        sent = sum((1 if re.search(POS, h["title"].lower()) else 0)
+                   - (1 if re.search(NEG, h["title"].lower()) else 0) for h in hits)
+        rows.append({"sector": name, "symbol": sym, "price": q[sym]["price"], "d1": q[sym]["change_pct"],
+                     "r5": q[sym].get("r5"), "r21": q[sym].get("r21"), "spark": q[sym]["spark"],
+                     "news": len(hits), "sentiment": sent,
+                     "headlines": [{"title": h["title"], "link": h["link"], "source": h["source"]} for h in hits[:3]]})
+    zd, z5, z21 = (_z([r[k] for r in rows]) for k in ("d1", "r5", "r21"))
+    zn, zs = _z([r["news"] for r in rows]), _z([r["sentiment"] for r in rows])
+    for r in rows:   # momentum (60%) + news attention (15%) + news tone (25%)
+        r["score"] = round(0.2 * zd(r["d1"]) + 0.25 * z5(r["r5"]) + 0.15 * z21(r["r21"])
+                           + 0.15 * zn(r["news"]) + 0.25 * zs(r["sentiment"]), 2)
+        r["view"] = ("Rally watch" if r["score"] > 0.5 else "Under pressure" if r["score"] < -0.5 else "Neutral")
+        bits = []
+        if r["r5"] is not None: bits.append(f"{r['r5']:+.1f}% over 5 sessions")
+        if r["r21"] is not None: bits.append(f"{r['r21']:+.1f}% over ~1 month")
+        bits.append(f"{r['news']} headline{'s' if r['news'] != 1 else ''} in 48h" +
+                    (f" (net tone {r['sentiment']:+d})" if r["news"] else ""))
+        r["why"] = " · ".join(bits)
+    rows.sort(key=lambda r: -r["score"])
+    return {"top": rows[:5], "bottom": rows[-5:][::-1] if len(rows) >= 10 else rows[5:][::-1],
+            "count": len(rows)}
+
+def fetch_news_cached(kind):
+    return cached(f"news:{kind}", NEWS_TTL, lambda: fetch_news(kind))
+
 # ---------------------------------------------------------------- API
 PREWARM = [("market", build_market), ("flows", fetch_flows),
            ("news:india", lambda: fetch_news("india")),
@@ -391,6 +458,11 @@ def quotes(response: Response, s: str = ""):
     edge_cache(response, 60)
     q = cached("wl:" + ",".join(sorted(syms)), 60, lambda: fetch_quotes(syms))
     return {"watchlist": [watch_row(q, x) for x in syms]}
+
+@app.get("/api/sectors")
+def sectors(response: Response):
+    edge_cache(response, PRICE_TTL)
+    return {**cached("sectors", PRICE_TTL, build_sectors), "generated": datetime.now(IST).isoformat()}
 
 @app.get("/api/search")
 def search(response: Response, q: str = ""):

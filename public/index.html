@@ -102,6 +102,21 @@ h2 .ctl:hover{color:var(--text)}
 .suggest .ex{font-family:var(--mono);font-size:10px;color:var(--dim)}
 .global-news{border-top:1px solid var(--line)}
 .global-news .feed{display:grid;grid-template-columns:1fr 1fr;column-gap:40px;max-height:none}
+.sec-h{font-family:var(--mono);font-size:11px;letter-spacing:.06em;margin:14px 0 4px;display:flex;justify-content:space-between;color:var(--muted)}
+.sec-h.up{color:var(--up)} .sec-h.down{color:var(--down)}
+.sec{padding:12px 0;border-bottom:1px solid var(--line)}
+.sec-top{display:flex;align-items:center;gap:10px}
+.sec-rank{font-family:var(--mono);font-size:11px;color:var(--dim);width:18px}
+.sec-name{font-size:15.5px;font-weight:500;flex:1}
+.view{font-family:var(--mono);font-size:10px;font-weight:700;padding:2px 7px;border-radius:2px;letter-spacing:.04em}
+.view.v-up{background:var(--up);color:#08110a} .view.v-down{background:var(--down);color:#fff} .view.v-flat{background:var(--mkt);color:#fff}
+.sec-d{font-family:var(--mono);font-size:13px;min-width:62px;text-align:right}
+.sec-meter{height:3px;border-radius:2px;margin:8px 0 6px 28px;background:var(--line);position:relative}
+.sec-meter i{position:absolute;top:0;bottom:0;border-radius:2px}
+.sec-why{margin-left:28px;color:var(--muted);font-size:12.5px}
+.sec-news{margin:4px 0 0 28px;font-size:12.5px}
+.sec-news a{display:block;color:var(--text);opacity:.85;padding:1px 0} .sec-news a:hover{color:var(--gold);opacity:1}
+.sec-note{color:var(--dim);font-family:var(--mono);font-size:10.5px;padding-top:12px}
 .empty{color:var(--dim);font-family:var(--mono);font-size:12px;padding:14px 0}
 
 @media (max-width:1100px){
@@ -246,9 +261,33 @@ const newsHtml = items => items.length ? items.map(i => `<div class="item">
   ${i.link ? `<a class="h" href="${esc(i.link)}" target="_blank" rel="noopener" style="display:block">${esc(i.title)}</a>` : `<div class="h">${esc(i.title)}</div>`}
   ${i.summary ? `<div class="s">${esc(i.summary)}</div>` : ''}</div>`).join('') : '<div class="empty">No items.</div>';
 
+/* ---------- sectors ---------- */
+let sectorData = null;
+const secCard = (r, i, up) => {
+  const w = Math.min(100, Math.abs(r.score) / 1.6 * 100), vc = r.view === 'Rally watch' ? 'v-up' : r.view === 'Under pressure' ? 'v-down' : 'v-flat';
+  return `<div class="sec"><div class="sec-top"><span class="sec-rank">${i + 1}</span><span class="sec-name">${esc(r.sector)}</span>
+    <span class="view ${vc}">${r.view.toUpperCase()}</span><span class="sec-d ${cls(r.d1)}">${pct(r.d1)}</span></div>
+    <div class="sec-meter"><i style="${r.score >= 0 ? 'left:50%' : 'right:50%'};width:${w / 2}%;background:var(--${r.score >= 0 ? 'up' : 'down'})"></i></div>
+    <div class="sec-why">${esc(r.why)}</div>
+    <div class="sec-news">${r.headlines.map(h => `<a href="${esc(h.link || '#')}" target="_blank" rel="noopener">› ${esc(h.title)}</a>`).join('')}</div></div>`;
+};
+async function renderSectors() {
+  const box = $('feedList');
+  if (!sectorData) {
+    box.innerHTML = '<div class="empty">scoring sectors…</div>';
+    try { sectorData = await (await fetch('/api/sectors')).json(); } catch (e) { box.innerHTML = '<div class="empty">sectors unavailable</div>'; return; }
+    if (tagFilter !== 'SECTORS') return;
+  }
+  const d = sectorData;
+  box.innerHTML = `<div class="sec-h up"><span>TOP 5 · IN FOCUS / RALLY POTENTIAL</span></div>${d.top.map((r, i) => secCard(r, i)).join('')}
+    <div class="sec-h down"><span>BOTTOM 5 · LAGGING / UNDER PRESSURE</span></div>${d.bottom.map((r, i) => secCard(r, i)).join('')}
+    <div class="sec-note">Score = sector-index momentum (1d/5d/1m, 60%) + news volume and tone in the last 48h (40%), ranked across ${d.count} NSE sector indices. A relative signal, not a forecast or investment advice.</div>`;
+}
+
 function renderFeed() {
-  const tags = ['ALL', ...new Set(newsItems.map(i => i.tag))];
+  const tags = ['ALL', 'SECTORS', ...new Set(newsItems.map(i => i.tag))];
   $('filters').innerHTML = tags.map(t => `<button class="${t === tagFilter ? 'on' : ''}" data-tag="${t}">${t}</button>`).join('');
+  if (tagFilter === 'SECTORS') { renderSectors(); return; }
   $('feedList').innerHTML = newsHtml(newsItems.filter(i => tagFilter === 'ALL' || i.tag === tagFilter));
 }
 async function loadNews() {
@@ -350,6 +389,7 @@ const live = fn => () => { if (!document.hidden) fn(); };   // don't poll from b
 })();
 setInterval(live(() => { loadMarket(); loadWatchlist(); }), 60_000);
 setInterval(live(loadNews), 180_000);
+setInterval(live(() => { sectorData = null; if (tagFilter === 'SECTORS') renderFeed(); }), 300_000);
 setInterval(live(renderFeed), 60_000); // refresh "x m ago"
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { loadMarket(); loadWatchlist(); loadNews(); } });
 </script>
