@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Market Terminal</title>
+<meta name="description" content="Indian equities dashboard: indices, FII/DII flows, news, global cues and a personal watchlist.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b1220; --panel:#0f1828; --panel2:#121d30; --line:#1d2a40; --text:#e6edf7;
+  --muted:#8391a7; --dim:#5d6a80; --gold:#e3b341; --up:#3fb950; --down:#f85149;
+  --alert:#a3262a; --geo:#e8862a; --earn:#2ea043; --macro:#388bfd; --crude:#a371f7;
+  --ipo:#db61a2; --flows:#39c5cf; --mkt:#6e7b91;
+  --mono:'JetBrains Mono',ui-monospace,monospace; --sans:'Inter',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.45}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1500px;margin:0 auto;border-left:1px solid var(--line);border-right:1px solid var(--line);min-height:100vh}
+
+/* header */
+header{display:flex;align-items:center;gap:28px;padding:14px 38px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.brand{font-weight:700;font-size:20px;letter-spacing:-.01em}
+nav{display:flex;gap:22px;flex-wrap:wrap}
+nav a{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.06em;cursor:pointer}
+nav a:hover{color:var(--text)}
+.status{margin-left:auto;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--up);box-shadow:0 0 8px var(--up)}
+.dot.off{background:var(--gold);box-shadow:0 0 8px var(--gold)}
+
+/* alert */
+.alert{display:flex;align-items:center;gap:14px;padding:13px 38px;background:linear-gradient(90deg,#7d1d22,var(--alert));font-size:15px}
+.alert[hidden]{display:none}
+.alert .pill{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;background:rgba(0,0,0,.28);padding:4px 10px;border-radius:3px;white-space:nowrap}
+.alert .src{font-family:var(--mono);font-size:12px;color:#f0b9bb;white-space:nowrap}
+.alert a:hover{text-decoration:underline}
+
+.sub{padding:16px 38px;color:var(--muted);font-size:15px;border-bottom:1px solid var(--line)}
+.sub b{color:var(--gold);font-weight:500}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(var(--kpicols,5),1fr);border-bottom:1px solid var(--line);background:var(--panel)}
+.kpi{padding:20px 24px;border-right:1px solid var(--line);position:relative;overflow:hidden}
+.kpi:last-child{border-right:0}
+.kpi .l{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.05em}
+.kpi .v{font-family:var(--mono);font-size:22px;font-weight:500;margin-top:6px}
+.kpi .c{font-family:var(--mono);font-size:12px;margin-top:2px}
+.kpi .v.neg{color:var(--down);font-weight:700}
+.kpi svg{position:absolute;right:16px;bottom:14px;opacity:.55}
+
+/* grid */
+.grid{display:grid;grid-template-columns:1.5fr 1fr}
+.grid3{display:grid;grid-template-columns:1fr 1.2fr 1fr;border-top:1px solid var(--line)}
+section{padding:22px 28px;border-right:1px solid var(--line);min-width:0}
+section:last-child{border-right:0}
+h2{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--gold);letter-spacing:.08em;display:flex;align-items:center;gap:12px;margin-bottom:10px}
+h2::after{content:"";flex:1;height:1px;background:var(--line)}
+h2 .ctl{font-weight:400;color:var(--dim);cursor:pointer;order:2}
+h2 .ctl:hover{color:var(--text)}
+
+/* feed */
+.feed{max-height:760px;overflow:auto;padding-right:6px}
+.item{padding:14px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:0}
+.meta{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:11px;color:var(--dim)}
+.tag{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:2px;color:#08110a}
+.t-EARNINGS{background:var(--earn)} .t-GEO{background:var(--geo)} .t-MACRO{background:var(--macro);color:#fff}
+.t-CRUDE{background:var(--crude);color:#fff} .t-IPO{background:var(--ipo);color:#fff} .t-FLOWS{background:var(--flows)}
+.t-MARKETS{background:var(--mkt);color:#fff}
+.item .h{font-size:15.5px;font-weight:500;margin-top:6px}
+.item a.h:hover{color:var(--gold)}
+.item .s{color:var(--muted);font-size:13px;margin-top:4px}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.filters button{font-family:var(--mono);font-size:10.5px;background:transparent;border:1px solid var(--line);color:var(--muted);padding:3px 8px;border-radius:2px;cursor:pointer}
+.filters button.on{border-color:var(--gold);color:var(--gold)}
+
+/* rows */
+.row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);gap:10px}
+.row:last-child{border-bottom:0}
+.row .n{color:var(--muted);font-size:14.5px}
+.row .n small{display:block;font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.row .p{text-align:right;font-family:var(--mono);font-size:14px}
+.row .p .c{display:block;font-size:11px}
+.row .x{color:var(--dim);cursor:pointer;font-size:14px;padding-left:8px}
+.row .x:hover{color:var(--down)}
+.up{color:var(--up)} .down{color:var(--down)}
+.movers{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.movers h3{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.06em;margin:4px 0 2px}
+.bar{height:3px;border-radius:2px;margin-top:4px}
+.add{display:flex;gap:8px;margin-bottom:6px}
+.add input{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--text);font-family:var(--mono);font-size:12px;padding:7px 10px;border-radius:3px;outline:none}
+.add input:focus{border-color:var(--gold)}
+.add button{background:var(--gold);color:#1a1300;border:0;font-family:var(--mono);font-weight:700;font-size:12px;padding:0 14px;border-radius:3px;cursor:pointer}
+.suggest{position:absolute;top:44px;left:0;right:0;z-index:8;background:var(--panel2);border:1px solid var(--line);border-radius:3px;box-shadow:0 8px 20px rgba(0,0,0,.4);max-height:260px;overflow:auto}
+.suggest .opt{display:flex;justify-content:space-between;gap:10px;align-items:baseline;padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--line)}
+.suggest .opt:last-child{border-bottom:0}
+.suggest .opt:hover,.suggest .opt.active{background:var(--line)}
+.suggest .nm{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.suggest .sy{font-family:var(--mono);font-size:11px;color:var(--gold);white-space:nowrap;padding-left:10px}
+.suggest .ex{font-family:var(--mono);font-size:10px;color:var(--dim)}
+.global-news{border-top:1px solid var(--line)}
+.global-news .feed{display:grid;grid-template-columns:1fr 1fr;column-gap:40px;max-height:none}
+.empty{color:var(--dim);font-family:var(--mono);font-size:12px;padding:14px 0}
+
+@media (max-width:1100px){
+  .kpis{grid-template-columns:repeat(2,1fr)} .kpi{border-bottom:1px solid var(--line)}
+  .grid,.grid3,.global-news .feed{grid-template-columns:1fr}
+  section{border-right:0;border-bottom:1px solid var(--line)}
+  header,.alert,.sub{padding-left:16px;padding-right:16px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand" id="brand">Market Terminal</div>
+    <nav>
+      <a data-go="feed">FEED</a><a data-go="cues">CUES</a><a data-go="crude">CRUDE</a>
+      <a data-go="movers">MOVERS</a><a data-go="watch">WATCHLIST</a><a data-go="gnews">GLOBAL NEWS</a>
+    </nav>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusTxt">connecting…</span></div>
+  </header>
+
+  <div class="alert" id="alert" hidden>
+    <span class="pill">GEOPOLITICAL ALERT</span>
+    <a id="alertTitle" target="_blank" rel="noopener"></a>
+    <span class="src" id="alertSrc"></span>
+  </div>
+
+  <div class="sub">Indian equities · <b id="date">—</b> · generated <span id="gen">—</span> IST</div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="grid">
+    <section id="feed">
+      <h2>LIVE INTELLIGENCE FEED</h2>
+      <div class="filters" id="filters"></div>
+      <div class="feed" id="feedList"><div class="empty">loading…</div></div>
+    </section>
+    <section id="cues">
+      <h2>GLOBAL CUES</h2>
+      <div id="cuesList"></div>
+    </section>
+  </div>
+
+  <div class="grid3">
+    <section id="crude"><h2>CRUDE &amp; COMMODITIES</h2><div id="crudeList"></div></section>
+    <section id="movers">
+      <h2>NIFTY 50 MOVERS</h2>
+      <div class="movers">
+        <div><h3>TOP GAINERS</h3><div id="gainers"></div></div>
+        <div><h3>TOP LOSERS</h3><div id="losers"></div></div>
+      </div>
+    </section>
+    <section id="watch" style="position:relative">
+      <h2>WATCHLIST</h2>
+      <form class="add" id="addForm"><input id="addInput" placeholder="e.g. Lemon Tree, IRFC, AAPL" autocomplete="off"><button id="addBtn">ADD</button></form>
+      <div class="suggest" id="suggest" hidden></div>
+      <div class="empty" id="addMsg" hidden></div>
+      <div id="watchList"></div>
+    </section>
+  </div>
+
+  <section class="global-news" id="gnews">
+    <h2>GLOBAL NEWS</h2>
+    <div class="feed" id="gnewsList"><div class="empty">loading…</div></div>
+  </section>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = (n, d = 2) => n == null ? '—' : Number(n).toLocaleString('en-IN', {minimumFractionDigits: d, maximumFractionDigits: d});
+const pct = c => `${c >= 0 ? '+' : ''}${c.toFixed(2)}%`;
+const cls = c => c >= 0 ? 'up' : 'down';
+const esc = s => (s || '').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const ago = ts => { const m = Math.max(0, Math.round((Date.now()/1000 - ts) / 60));
+  return m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m/60)}h ago` : `${Math.floor(m/1440)}d ago`; };
+
+function spark(vals, up) {
+  if (!vals || vals.length < 2) return '';
+  const w = 90, h = 28, mn = Math.min(...vals), mx = Math.max(...vals), r = mx - mn || 1;
+  const pts = vals.map((v, i) => `${(i/(vals.length-1)*w).toFixed(1)},${(h - (v-mn)/r*h).toFixed(1)}`).join(' ');
+  return `<svg width="${w}" height="${h}"><polyline fill="none" stroke="${up ? 'var(--up)' : 'var(--down)'}" stroke-width="1.5" points="${pts}"/></svg>`;
+}
+const row = (r, extra = '') => `<div class="row"><div class="n">${esc(r.label)}${r.unit ? `<small>${r.unit}</small>` : ''}</div>
+  <div style="display:flex;align-items:center"><div class="p ${cls(r.change_pct)}">${fmt(r.price)}<span class="c">${pct(r.change_pct)}</span></div>${extra}</div></div>`;
+
+/* ---------- watchlist (stored per browser) ---------- */
+let CFG = {name: 'Market Terminal', max_watchlist: 25, default_watchlist: []};
+const WL_KEY = 'terminal.watchlist.v1';
+const getWL = () => { try { const v = JSON.parse(localStorage.getItem(WL_KEY)); if (Array.isArray(v)) return v; } catch (e) {} return null; };
+const setWL = l => { try { localStorage.setItem(WL_KEY, JSON.stringify(l)); } catch (e) {} wlMem = l; };
+let wlMem = null;
+const wl = () => getWL() ?? wlMem ?? CFG.default_watchlist;
+
+async function loadWatchlist() {
+  const list = wl();
+  if (!list.length) { $('watchList').innerHTML = '<div class="empty">Add a ticker above (NSE by default).</div>'; return; }
+  try {
+    const d = await (await fetch('/api/quotes?s=' + encodeURIComponent(list.join(',')))).json();
+    $('watchList').innerHTML = d.watchlist.map(r => row(r, `<span class="x" title="remove" data-rm="${esc(r.symbol)}">✕</span>`)).join('');
+  } catch (e) {}
+}
+
+/* ---------- market ---------- */
+async function loadMarket() {
+  try {
+    const d = await (await fetch('/api/market')).json();
+    const g = new Date(d.generated);
+    $('date').textContent = g.toLocaleDateString('en-IN', {weekday:'long', day:'numeric', month:'long', year:'numeric', timeZone:'Asia/Kolkata'});
+    $('gen').textContent = g.toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', timeZone:'Asia/Kolkata'}).toUpperCase();
+    $('dot').className = 'dot' + (d.live ? '' : ' off');
+    $('statusTxt').textContent = (d.live ? `LIVE · ${d.live_ratio} feeds` : 'SAMPLE DATA · sources unreachable')
+      + (d.market_open ? ' · NSE OPEN' : ' · NSE CLOSED');
+
+    const k = d.kpis, f = d.flows;
+    const tile = t => `<div class="kpi"><div class="l">${t.label}</div><div class="v">${fmt(t.price, t.decimals)}</div>
+      <div class="c ${cls(t.change_pct)}">${pct(t.change_pct)}</div>${spark(t.spark, t.change_pct >= 0)}</div>`;
+    const flows = `<div class="kpi"><div class="l">FII / DII FLOWS${f.date ? ' · ' + f.date : ''}</div>
+      <div class="v ${f.fii < 0 ? 'neg' : 'up'}">FII ${f.fii >= 0 ? '+' : ''}${fmt(f.fii, 0)} cr</div>
+      <div class="c ${f.dii >= 0 ? 'up' : 'down'}">DII ${f.dii >= 0 ? '+' : ''}${fmt(f.dii, 0)} cr${f.live ? '' : ' · sample'}</div></div>`;
+    const tiles = k.map(tile);
+    tiles.splice(Math.min(2, tiles.length), 0, flows);   // FII/DII sits third
+    $('kpis').innerHTML = tiles.join('');
+    $('kpis').style.setProperty('--kpicols', String(tiles.length));
+
+    $('cuesList').innerHTML = d.global.map(r => row(r)).join('');
+    $('crudeList').innerHTML = d.crude.map(r => row(r)).join('');
+    const maxAbs = Math.max(...[...d.movers.gainers, ...d.movers.losers].map(r => Math.abs(r.change_pct)), 1);
+    const mv = r => `<div class="row" style="display:block"><div style="display:flex;justify-content:space-between">
+      <span class="n">${esc(r.label)}</span><span class="p ${cls(r.change_pct)}">${pct(r.change_pct)}</span></div>
+      <div class="bar" style="width:${Math.abs(r.change_pct)/maxAbs*100}%;background:var(--${r.change_pct >= 0 ? 'up' : 'down'})"></div></div>`;
+    $('gainers').innerHTML = d.movers.gainers.map(mv).join('');
+    $('losers').innerHTML = d.movers.losers.map(mv).join('');
+  } catch (e) {
+    $('dot').className = 'dot off'; $('statusTxt').textContent = 'server offline';
+  }
+}
+
+/* ---------- news ---------- */
+let newsItems = [], tagFilter = 'ALL';
+const newsHtml = items => items.length ? items.map(i => `<div class="item">
+  <div class="meta"><span class="tag t-${i.tag}">${i.tag}</span><span>${ago(i.ts)}</span><span>· ${esc(i.source)}</span></div>
+  ${i.link ? `<a class="h" href="${esc(i.link)}" target="_blank" rel="noopener" style="display:block">${esc(i.title)}</a>` : `<div class="h">${esc(i.title)}</div>`}
+  ${i.summary ? `<div class="s">${esc(i.summary)}</div>` : ''}</div>`).join('') : '<div class="empty">No items.</div>';
+
+function renderFeed() {
+  const tags = ['ALL', ...new Set(newsItems.map(i => i.tag))];
+  $('filters').innerHTML = tags.map(t => `<button class="${t === tagFilter ? 'on' : ''}" data-tag="${t}">${t}</button>`).join('');
+  $('feedList').innerHTML = newsHtml(newsItems.filter(i => tagFilter === 'ALL' || i.tag === tagFilter));
+}
+async function loadNews() {
+  try {
+    const d = await (await fetch('/api/news?kind=india')).json();
+    newsItems = d.items; renderFeed();
+    const g = await (await fetch('/api/news?kind=global')).json();
+    $('gnewsList').innerHTML = newsHtml(g.items.slice(0, 24));
+    const a = d.alert || g.alert;
+    $('alert').hidden = !a;
+    if (a) { $('alertTitle').textContent = a.title; $('alertTitle').href = a.link || '#'; $('alertSrc').textContent = '— ' + a.source; }
+  } catch (e) {}
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click', async e => {
+  const t = e.target;
+  if (t.dataset.go) $(t.dataset.go).scrollIntoView({behavior: 'smooth', block: 'start'});
+  if (t.dataset.tag) { tagFilter = t.dataset.tag; renderFeed(); }
+  if (t.dataset.rm) { setWL(wl().filter(s => s !== t.dataset.rm)); loadWatchlist(); }
+});
+const addMsg = (t, bad) => { const m = $('addMsg'); m.hidden = !t; m.textContent = t || '';
+  m.style.color = bad ? 'var(--down)' : 'var(--dim)'; };
+
+async function addTicker(sym) {
+  $('addBtn').disabled = true; addMsg('checking ' + sym.toUpperCase() + '…');
+  try {
+    if (wl().length >= CFG.max_watchlist) { addMsg(`watchlist is full (${CFG.max_watchlist} max)`, true); $('addBtn').disabled = false; return; }
+    const res = await fetch('/api/resolve?q=' + encodeURIComponent(sym));
+    if (res.ok) {
+      const {symbol} = await res.json();
+      if (!wl().includes(symbol)) setWL([...wl(), symbol]);
+      $('addInput').value = ''; addMsg(''); hideSuggest(); loadWatchlist();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      addMsg(d.detail || `could not add ${sym.toUpperCase()}`, true);
+    }
+  } catch (err) { addMsg('server offline', true); }
+  $('addBtn').disabled = false;
+}
+
+/* ---------- watchlist search-as-you-type ---------- */
+let searchSeq = 0, suggestItems = [], suggestActive = -1;
+const hideSuggest = () => { $('suggest').hidden = true; suggestItems = []; suggestActive = -1; };
+
+function renderSuggest() {
+  const box = $('suggest');
+  if (!suggestItems.length) { hideSuggest(); return; }
+  box.innerHTML = suggestItems.map((r, i) => `<div class="opt${i === suggestActive ? ' active' : ''}" data-i="${i}">
+    <span class="nm">${esc(r.name)} <span class="ex">${esc(r.exchange)}</span></span>
+    <span class="sy">${esc(r.symbol)}</span></div>`).join('');
+  box.hidden = false;
+}
+
+async function runSearch(v) {
+  const seq = ++searchSeq;
+  try {
+    const d = await (await fetch('/api/search?q=' + encodeURIComponent(v))).json();
+    if (seq !== searchSeq) return; // a newer keystroke already superseded this
+    suggestItems = d.results || []; suggestActive = -1; renderSuggest();
+  } catch (e) {}
+}
+
+let searchTimer = null;
+$('addInput').addEventListener('input', e => {
+  const v = e.target.value.trim();
+  clearTimeout(searchTimer);
+  if (v.length < 2) { hideSuggest(); return; }
+  searchTimer = setTimeout(() => runSearch(v), 250);
+});
+$('addInput').addEventListener('keydown', e => {
+  if ($('suggest').hidden) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); suggestActive = Math.min(suggestActive + 1, suggestItems.length - 1); renderSuggest(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); suggestActive = Math.max(suggestActive - 1, 0); renderSuggest(); }
+  else if (e.key === 'Escape') { hideSuggest(); }
+  else if (e.key === 'Enter' && suggestActive >= 0) { e.preventDefault(); addTicker(suggestItems[suggestActive].symbol); }
+});
+$('suggest').addEventListener('mousedown', e => {
+  const opt = e.target.closest('.opt'); if (!opt) return;
+  e.preventDefault(); addTicker(suggestItems[+opt.dataset.i].symbol);
+});
+document.addEventListener('click', e => { if (!e.target.closest('#watch')) hideSuggest(); });
+
+$('addForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const v = $('addInput').value.trim(); if (!v) return;
+  // Enter with a suggestion highlighted is handled by keydown above; otherwise
+  // submit the typed text as-is and let the backend try a name-search fallback.
+  addTicker(v);
+});
+
+const live = fn => () => { if (!document.hidden) fn(); };   // don't poll from background tabs
+(async () => {
+  try {
+    CFG = await (await fetch('/api/config')).json();
+    $('brand').textContent = CFG.name; document.title = CFG.name;
+  } catch (e) {}
+  loadMarket(); loadNews(); loadWatchlist();
+})();
+setInterval(live(() => { loadMarket(); loadWatchlist(); }), 60_000);
+setInterval(live(loadNews), 180_000);
+setInterval(live(renderFeed), 60_000); // refresh "x m ago"
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { loadMarket(); loadWatchlist(); loadNews(); } });
+</script>
+</body>
+</html>
